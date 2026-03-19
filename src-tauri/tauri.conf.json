@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "component-price-comparator",
+  "productName": "元器件比价助手",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.icyci.component-price-comparator",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",

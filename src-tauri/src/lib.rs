@@ -1,3 +1,4 @@
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 /// 搜索结果
@@ -45,38 +46,172 @@ pub struct SearchErrorInfo {
     pub message: String,
 }
 
-/// Tauri 命令：搜索立创商城（模拟数据）
+// ========== 立创 API 响应结构 ==========
+
+#[derive(Debug, Deserialize)]
+struct LcscSearchResponse {
+    #[serde(default)]
+    code: i32,
+    #[serde(default)]
+    msg: String,
+    result: Option<LcscSearchResult>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LcscSearchResult {
+    products: Vec<LcscProduct>,
+    total: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct LcscProduct {
+    product_code: String,
+    product_name: String,
+    product_intro: Option<String>,
+    brand_name: Option<String>,
+    stock: Option<u32>,
+    price: Option<Vec<LcscPrice>>,
+    encap_standard: Option<String>,
+    product_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LcscPrice {
+    start_quantity: u32,
+    price: String,
+}
+
+/// Tauri 命令：搜索立创商城（真实 API）
 #[tauri::command]
 async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>) -> SearchResult {
     let page = page.unwrap_or(1);
     let page_size = page_size.unwrap_or(20);
 
-    // 模拟数据 - 后续替换为真实 API
-    let mock_products = vec![
-        Product {
-            product_id: "1".to_string(),
-            product_code: "C8735".to_string(),
-            product_name: "STM32F103C8T6".to_string(),
-            model: "STM32F103C8T6".to_string(),
-            brand: "ST(意法半导体)".to_string(),
-            package: "LQFP-48(7x7)".to_string(),
-            params: "72MHz | 64KB Flash | 20KB SRAM | 2V~3.6V".to_string(),
-            stock: 1560,
-            prices: vec![
-                PriceTier { quantity: 1, price: 12.50 },
-                PriceTier { quantity: 10, price: 11.26 },
-                PriceTier { quantity: 100, price: 10.22 },
-                PriceTier { quantity: 500, price: 9.34 },
-            ],
-            product_url: Some(format!("https://item.szlcsc.com/{}.html", "C8735")),
-        },
-    ];
+    // 创建 HTTP 客户端
+    let client = match Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return SearchResult {
+                success: false,
+                data: None,
+                error: Some(SearchErrorInfo {
+                    code: "CLIENT_ERROR".to_string(),
+                    message: format!("创建 HTTP 客户端失败: {}", e),
+                }),
+            }
+        }
+    };
+
+    // 构建请求 URL
+    let url = format!(
+        "https://wwwapi.lcsc.com/v1/products/search?keywords={}&page={}&size={}",
+        urlencoding::encode(&keyword),
+        page,
+        page_size
+    );
+
+    // 发送请求
+    let response = match client
+        .get(&url)
+        .header("Referer", "https://www.szlcsc.com/")
+        .header("Origin", "https://www.szlcsc.com")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return SearchResult {
+                success: false,
+                data: None,
+                error: Some(SearchErrorInfo {
+                    code: "REQUEST_ERROR".to_string(),
+                    message: format!("请求失败: {}", e),
+                }),
+            }
+        }
+    };
+
+    // 解析响应
+    let lcsc_response: LcscSearchResponse = match response.json().await {
+        Ok(r) => r,
+        Err(e) => {
+            return SearchResult {
+                success: false,
+                data: None,
+                error: Some(SearchErrorInfo {
+                    code: "PARSE_ERROR".to_string(),
+                    message: format!("解析响应失败: {}", e),
+                }),
+            }
+        }
+    };
+
+    // 检查响应码
+    if lcsc_response.code != 0 {
+        return SearchResult {
+            success: false,
+            data: None,
+            error: Some(SearchErrorInfo {
+                code: "API_ERROR".to_string(),
+                message: lcsc_response.msg,
+            }),
+        };
+    }
+
+    // 转换数据
+    let result = match lcsc_response.result {
+        Some(r) => r,
+        None => {
+            return SearchResult {
+                success: true,
+                data: Some(SearchData {
+                    products: vec![],
+                    total: 0,
+                    page,
+                    page_size,
+                }),
+                error: None,
+            }
+        }
+    };
+
+    let products: Vec<Product> = result
+        .products
+        .into_iter()
+        .map(|p| {
+            let prices: Vec<PriceTier> = p
+                .price
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|pp| pp.price.parse::<f64>().ok().map(|price| PriceTier {
+                    quantity: pp.start_quantity,
+                    price,
+                }))
+                .collect();
+
+            Product {
+                product_id: p.product_code.clone(),
+                product_code: p.product_code,
+                product_name: p.product_name,
+                model: p.product_intro.unwrap_or_default(),
+                brand: p.brand_name.unwrap_or_else(|| "未知".to_string()),
+                package: p.encap_standard.unwrap_or_default(),
+                params: String::new(),
+                stock: p.stock.unwrap_or(0),
+                prices,
+                product_url: p.product_url,
+            }
+        })
+        .collect();
 
     SearchResult {
         success: true,
         data: Some(SearchData {
-            products: mock_products,
-            total: 1,
+            products,
+            total: result.total,
             page,
             page_size,
         }),

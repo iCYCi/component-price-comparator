@@ -3,10 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::Duration;
 
-// 全局 Cookie 存储
 static LCSC_COOKIES: Mutex<Option<String>> = Mutex::new(None);
 
-/// 搜索结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub success: bool,
@@ -51,15 +49,12 @@ pub struct SearchErrorInfo {
     pub message: String,
 }
 
-/// 平台登录状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginStatus {
     pub platform: String,
     pub logged_in: bool,
     pub username: Option<String>,
 }
-
-// ========== 立创 API 响应结构 ==========
 
 #[derive(Debug, Deserialize)]
 struct LcscSearchResponse {
@@ -94,222 +89,125 @@ struct LcscPrice {
     price: String,
 }
 
-/// Tauri 命令：设置立创 Cookie
 #[tauri::command]
 async fn set_lcsc_cookie(cookie: String) -> SearchResult {
     let mut stored = LCSC_COOKIES.lock().unwrap();
     *stored = Some(cookie);
-    
-    SearchResult {
-        success: true,
-        data: None,
-        error: None,
-    }
+    SearchResult { success: true, data: None, error: None }
 }
 
-/// Tauri 命令：获取登录状态
 #[tauri::command]
 async fn get_login_status() -> LoginStatus {
     let stored = LCSC_COOKIES.lock().unwrap();
-    let logged_in = stored.is_some();
-    
     LoginStatus {
         platform: "lcsc".to_string(),
-        logged_in,
-        username: if logged_in { Some("已登录".to_string()) } else { None },
+        logged_in: stored.is_some(),
+        username: if stored.is_some() { Some("已登录".to_string()) } else { None },
     }
 }
 
-/// Tauri 命令：登出
 #[tauri::command]
 async fn logout_lcsc() -> SearchResult {
     let mut stored = LCSC_COOKIES.lock().unwrap();
     *stored = None;
-    
-    SearchResult {
-        success: true,
-        data: None,
-        error: None,
-    }
+    SearchResult { success: true, data: None, error: None }
 }
 
-/// Tauri 命令：搜索立创商城
 #[tauri::command]
 async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>) -> SearchResult {
     let page = page.unwrap_or(1);
     let page_size = page_size.unwrap_or(20);
 
-    // 检查是否已登录
-    let cookie = {
-        let stored = LCSC_COOKIES.lock().unwrap();
-        stored.clone()
-    };
-
+    let cookie = LCSC_COOKIES.lock().unwrap().clone();
     if cookie.is_none() {
         return SearchResult {
-            success: false,
-            data: None,
-            error: Some(SearchErrorInfo {
-                code: "NOT_LOGGED_IN".to_string(),
-                message: "请先登录立创商城".to_string(),
-            }),
+            success: false, data: None,
+            error: Some(SearchErrorInfo { code: "NOT_LOGGED_IN".into(), message: "请先登录立创商城".into() }),
         };
     }
 
-    // 创建 HTTP 客户端
     let client = match Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return SearchResult {
-                success: false,
-                data: None,
-                error: Some(SearchErrorInfo {
-                    code: "CLIENT_ERROR".to_string(),
-                    message: format!("创建 HTTP 客户端失败: {}", e),
-                }),
-            }
-        }
-    };
+        .build() {
+            Ok(c) => c,
+            Err(e) => return SearchResult {
+                success: false, data: None,
+                error: Some(SearchErrorInfo { code: "CLIENT_ERROR".into(), message: e.to_string() }),
+            },
+        };
 
-    // 构建请求 URL
     let url = format!(
         "https://wwwapi.lcsc.com/v1/products/search?keywords={}&page={}&size={}",
-        urlencoding::encode(&keyword),
-        page,
-        page_size
+        urlencoding::encode(&keyword), page, page_size
     );
 
-    // 发送请求（带 Cookie）
-    let response = match client
-        .get(&url)
-        .header("Accept", "application/json, text/plain, */*")
-        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+    let response = match client.get(&url)
+        .header("Accept", "application/json")
         .header("Referer", "https://www.szlcsc.com/")
-        .header("Origin", "https://www.szlcsc.com")
         .header("Cookie", cookie.unwrap_or_default())
-        .header("Cache-Control", "no-cache")
-        .send()
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            let error_msg = if e.is_timeout() {
-                "请求超时，请检查网络连接".to_string()
-            } else if e.is_connect() {
-                "无法连接到立创服务器，请检查网络连接".to_string()
-            } else {
-                format!("网络请求失败: {}", e)
-            };
-            
-            return SearchResult {
-                success: false,
-                data: None,
-                error: Some(SearchErrorInfo {
-                    code: "REQUEST_ERROR".to_string(),
-                    message: error_msg,
-                }),
-            }
-        }
-    };
+        .send().await {
+            Ok(r) => r,
+            Err(e) => return SearchResult {
+                success: false, data: None,
+                error: Some(SearchErrorInfo { code: "REQUEST_ERROR".into(), message: e.to_string() }),
+            },
+        };
 
-    // 检查 HTTP 状态码
     if !response.status().is_success() {
         return SearchResult {
-            success: false,
-            data: None,
-            error: Some(SearchErrorInfo {
-                code: "HTTP_ERROR".to_string(),
-                message: format!("HTTP 错误: {}", response.status()),
-            }),
+            success: false, data: None,
+            error: Some(SearchErrorInfo { code: "HTTP_ERROR".into(), message: format!("HTTP {}", response.status()) }),
         };
     }
 
-    // 解析响应
-    let lcsc_response: LcscSearchResponse = match response.json().await {
+    let lcsc: LcscSearchResponse = match response.json().await {
         Ok(r) => r,
-        Err(e) => {
-            return SearchResult {
-                success: false,
-                data: None,
-                error: Some(SearchErrorInfo {
-                    code: "PARSE_ERROR".to_string(),
-                    message: format!("解析响应失败: {}", e),
-                }),
-            }
-        }
+        Err(e) => return SearchResult {
+            success: false, data: None,
+            error: Some(SearchErrorInfo { code: "PARSE_ERROR".into(), message: e.to_string() }),
+        },
     };
 
-    // 检查响应码
-    if lcsc_response.code != 0 {
+    if lcsc.code != 0 {
         return SearchResult {
-            success: false,
-            data: None,
-            error: Some(SearchErrorInfo {
-                code: "API_ERROR".to_string(),
-                message: lcsc_response.msg,
-            }),
+            success: false, data: None,
+            error: Some(SearchErrorInfo { code: "API_ERROR".into(), message: lcsc.msg }),
         };
     }
 
-    // 转换数据
-    let result = match lcsc_response.result {
+    let result = match lcsc.result {
         Some(r) => r,
-        None => {
-            return SearchResult {
-                success: true,
-                data: Some(SearchData {
-                    products: vec![],
-                    total: 0,
-                    page,
-                    page_size,
-                }),
-                error: None,
-            }
-        }
+        None => return SearchResult {
+            success: true,
+            data: Some(SearchData { products: vec![], total: 0, page, page_size }),
+            error: None,
+        },
     };
 
-    let products: Vec<Product> = result
-        .products
-        .into_iter()
-        .map(|p| {
-            let prices: Vec<PriceTier> = p
-                .price
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|pp| pp.price.parse::<f64>().ok().map(|price| PriceTier {
-                    quantity: pp.start_quantity,
-                    price,
-                }))
-                .collect();
-
-            Product {
-                product_id: p.product_code.clone(),
-                product_code: p.product_code,
-                product_name: p.product_name,
-                model: p.product_intro.unwrap_or_default(),
-                brand: p.brand_name.unwrap_or_else(|| "未知".to_string()),
-                package: p.encap_standard.unwrap_or_default(),
-                params: String::new(),
-                stock: p.stock.unwrap_or(0),
-                prices,
-                product_url: p.product_url,
-            }
-        })
-        .collect();
+    let products: Vec<Product> = result.products.into_iter().map(|p| {
+        let prices: Vec<PriceTier> = p.price.unwrap_or_default().into_iter()
+            .filter_map(|pp| pp.price.parse::<f64>().ok().map(|price| PriceTier {
+                quantity: pp.start_quantity, price
+            })).collect();
+        Product {
+            product_id: p.product_code.clone(),
+            product_code: p.product_code,
+            product_name: p.product_name,
+            model: p.product_intro.unwrap_or_default(),
+            brand: p.brand_name.unwrap_or_else(|| "未知".into()),
+            package: p.encap_standard.unwrap_or_default(),
+            params: String::new(),
+            stock: p.stock.unwrap_or(0),
+            prices,
+            product_url: p.product_url,
+        }
+    }).collect();
 
     SearchResult {
         success: true,
-        data: Some(SearchData {
-            products,
-            total: result.total,
-            page,
-            page_size,
-        }),
+        data: Some(SearchData { products, total: result.total, page, page_size }),
         error: None,
     }
 }
@@ -317,22 +215,13 @@ async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>)
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::ShellPlugin::default())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            #[cfg(debug_assertions)]
+            { app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?; }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            search_lcsc,
-            set_lcsc_cookie,
-            get_login_status,
-            logout_lcsc
-        ])
+        .invoke_handler(tauri::generate_handler![search_lcsc, set_lcsc_cookie, get_login_status, logout_lcsc])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

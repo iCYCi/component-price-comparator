@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Search, Upload, Loader2, User, LogOut } from 'lucide-react';
+import { Search, Upload, Loader2, User, LogOut, ExternalLink } from 'lucide-react';
 import { searchLcsc, setLcscCookie, getLoginStatus, logoutLcsc, type Product, type PriceTier } from './api/lcsc';
+import { open } from '@tauri-apps/plugin-shell';
 
 const App: React.FC = () => {
   const [keyword, setKeyword] = useState('');
@@ -18,6 +19,10 @@ const App: React.FC = () => {
 
   const checkLoginStatus = async () => {
     try { setIsLoggedIn((await getLoginStatus()).logged_in); } catch (e) {}
+  };
+
+  const handleOpenLcsc = async () => {
+    try { await open('https://www.szlcsc.com'); } catch (e) { window.open('https://www.szlcsc.com', '_blank'); }
   };
 
   const handleLogin = async () => {
@@ -66,21 +71,24 @@ const App: React.FC = () => {
 
       {showLoginModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
+          <div className="bg-white rounded-lg p-6 w-[480px] max-w-full mx-4">
             <h2 className="text-lg font-bold mb-4">登录立创商城</h2>
-            <div className="mb-4 text-xs text-gray-500">
-              <p className="mb-2 font-medium">获取 Cookie 步骤：</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>浏览器打开立创商城并登录</li>
+            <div className="mb-4">
+              <button onClick={handleOpenLcsc} className="w-full py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center justify-center gap-2 mb-4">
+                <ExternalLink className="w-4 h-4" />打开立创商城登录
+              </button>
+              <p className="text-xs text-gray-500 mb-2">登录后，按以下步骤获取 Cookie：</p>
+              <ol className="text-xs text-gray-500 list-decimal list-inside space-y-1">
+                <li>登录立创商城账号</li>
                 <li>按 F12 打开开发者工具</li>
                 <li>切换到 Network 标签</li>
-                <li>刷新页面，点击任意请求</li>
-                <li>复制 Request Headers 中的 Cookie</li>
+                <li>刷新页面</li>
+                <li>点击任意请求，复制 Cookie 值</li>
               </ol>
             </div>
-            <textarea value={cookieInput} onChange={(e) => setCookieInput(e.target.value)} placeholder="粘贴 Cookie..." className="w-full border rounded p-2 text-sm h-24 mb-4" />
+            <textarea value={cookieInput} onChange={(e) => setCookieInput(e.target.value)} placeholder="粘贴 Cookie..." className="w-full border rounded p-2 text-sm h-20 mb-4" />
             <div className="flex gap-2">
-              <button onClick={handleLogin} disabled={loginLoading} className="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50">{loginLoading ? '登录中...' : '登录'}</button>
+              <button onClick={handleLogin} disabled={loginLoading} className="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50">{loginLoading ? '登录中...' : '确认登录'}</button>
               <button onClick={() => setShowLoginModal(false)} className="flex-1 py-2 border rounded hover:bg-gray-50">取消</button>
             </div>
           </div>
@@ -102,14 +110,6 @@ const App: React.FC = () => {
           </button>
           <button className="px-4 py-2.5 border rounded hover:bg-gray-50 flex items-center gap-2 text-gray-700"><Upload className="w-4 h-4" />上传BOM</button>
         </div>
-        <div className="mt-3 flex items-center gap-6">
-          <span className="text-sm text-gray-500">平台:</span>
-          {['立创商城', '在芯间', '云汉芯城', '华秋商城', '硬之城'].map((p) => (
-            <label key={p} className="flex items-center gap-1.5 text-sm text-gray-600">
-              <input type="checkbox" defaultChecked className="w-4 h-4 text-red-600 rounded" /><span>{p}</span>
-            </label>
-          ))}
-        </div>
       </div>
 
       <div className="flex-1 px-4 py-4">
@@ -118,14 +118,13 @@ const App: React.FC = () => {
           {products.length > 0 && <div className="mb-4 text-sm text-gray-500">共找到 <span className="font-medium text-gray-900">{total}</span> 条结果</div>}
           {products.length > 0 && (
             <div className="bg-white rounded-lg shadow overflow-hidden">
-              <table className="w-full">
+              <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">平台</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600">商品信息</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-48">阶梯价格</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">库存</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">操作</th>
+                    <th className="px-3 py-3 text-left font-medium text-gray-600 w-20">平台</th>
+                    <th className="px-3 py-3 text-left font-medium text-gray-600">商品信息</th>
+                    <th className="px-3 py-3 text-left font-medium text-gray-600 w-48">阶梯价格</th>
+                    <th className="px-3 py-3 text-left font-medium text-gray-600 w-20">库存</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -133,8 +132,8 @@ const App: React.FC = () => {
                     <tr key={p.product_id} className="hover:bg-gray-50">
                       <td className="px-3 py-4"><span className="px-2 py-1 text-xs rounded bg-red-50 text-red-600">立创商城</span></td>
                       <td className="px-3 py-4">
-                        <div className="text-sm text-gray-900">{p.product_name}</div>
-                        <div className="text-xs text-blue-600 font-medium">{p.model || p.product_code}</div>
+                        <div className="text-gray-900">{p.product_name}</div>
+                        <div className="text-blue-600 font-medium">{p.model || p.product_code}</div>
                         <div className="text-xs text-gray-500">{p.brand} | {p.package || '-'}</div>
                       </td>
                       <td className="px-3 py-4">
@@ -152,18 +151,13 @@ const App: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-3 py-4"><div className="font-medium">{p.stock.toLocaleString()}</div><div className="text-xs text-green-600">现货</div></td>
-                      <td className="px-3 py-4"><a href={p.product_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-sm">查看</a></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          {!loading && !error && products.length === 0 && (
-            <div className="bg-white rounded-lg shadow p-12 text-center">
-              <div className="text-gray-400">输入型号开始搜索</div>
-            </div>
-          )}
+          {!loading && !error && products.length === 0 && <div className="bg-white rounded-lg shadow p-12 text-center text-gray-400">输入型号开始搜索</div>}
         </div>
       </div>
     </div>

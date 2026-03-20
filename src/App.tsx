@@ -1,96 +1,104 @@
-import React, { useState } from 'react';
-import { Search, Upload, History, Star, Settings, ChevronDown } from 'lucide-react';
-
-// 阶梯价格数据类型
-interface PriceTier {
-  quantity: number;
-  price: number;
-  isBest?: boolean;
-}
-
-// 产品数据类型
-interface Product {
-  id: string;
-  platform: string;
-  model: string;
-  brand: string;
-  encapsulation: string;
-  category: string;
-  partNumber: string;
-  priceTiers: PriceTier[];
-  stock: number;
-  stockStatus: string;
-  matchRate: number;
-  description: string;
-  params: string;
-}
-
-// 模拟数据
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    platform: '立创商城',
-    model: 'STM32F103C8T6',
-    brand: 'ST(意法半导体)',
-    encapsulation: 'LQFP-48(7x7)',
-    category: '单片机',
-    partNumber: 'C8735',
-    priceTiers: [
-      { quantity: 1, price: 12.50 },
-      { quantity: 10, price: 11.26 },
-      { quantity: 100, price: 10.22, isBest: true },
-      { quantity: 500, price: 9.34 },
-    ],
-    stock: 1560,
-    stockStatus: '现货',
-    matchRate: 100,
-    description: 'ARM Cortex-M3 内核，72MHz主频',
-    params: '72MHz | 64KB Flash | 20KB SRAM'
-  },
-  {
-    id: '2',
-    platform: '在芯间',
-    model: 'STM32F103C8T6',
-    brand: 'ST',
-    encapsulation: 'LQFP-48',
-    category: '单片机',
-    partNumber: 'Z558735',
-    priceTiers: [
-      { quantity: 1, price: 11.80 },
-      { quantity: 10, price: 11.00 },
-      { quantity: 100, price: 10.20, isBest: true },
-    ],
-    stock: 3200,
-    stockStatus: '现货',
-    matchRate: 100,
-    description: 'ARM Cortex-M3 32位MCU',
-    params: '72MHz | 64KB Flash | 20KB SRAM'
-  },
-  {
-    id: '3',
-    platform: '云汉芯城',
-    model: 'STM32F103C8T6',
-    brand: 'ST',
-    encapsulation: 'LQFP-48',
-    category: '单片机',
-    partNumber: 'YH1234',
-    priceTiers: [
-      { quantity: 1, price: 13.00 },
-      { quantity: 10, price: 12.50 },
-      { quantity: 100, price: 11.00, isBest: true },
-    ],
-    stock: 890,
-    stockStatus: '现货',
-    matchRate: 100,
-    description: '高性能ARM Cortex-M3 MCU',
-    params: '72MHz | 64KB Flash | 20KB SRAM'
-  },
-];
+import React, { useState, useCallback } from 'react';
+import { Search, Upload, History, Star, Settings, ChevronDown, Loader2 } from 'lucide-react';
+import { searchComponents } from './api/lcsc';
+import type { Component, SearchComponentsResult } from './types/component';
 
 const App: React.FC = () => {
   const [keyword, setKeyword] = useState('');
   const [quantity, setQuantity] = useState('100');
   const [sortBy] = useState('综合排序');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [products, setProducts] = useState<Component[]>([]);
+  const [total, setTotal] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [platforms, setPlatforms] = useState({
+    lcsc: true,
+    zaixjian: false,
+    yunhan: false,
+    huaqiu: false,
+    yingzhicheng: false,
+  });
+
+  // 执行搜索
+  const handleSearch = useCallback(async () => {
+    if (!keyword.trim()) {
+      setError('请输入搜索关键词');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result: SearchComponentsResult = await searchComponents({
+        keyword: keyword.trim(),
+        quantity: parseInt(quantity) || 100,
+        fuzzySearch: true,
+        page: 1,
+        pageSize: 20,
+      });
+
+      setProducts(result.components);
+      setTotal(result.total);
+      setElapsedMs(result.elapsedMs);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '搜索失败，请稍后重试');
+      setProducts([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [keyword, quantity]);
+
+  // 回车搜索
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  // 获取最优价格
+  const getBestPrice = (priceTiers: Component['priceTiers']) => {
+    if (!priceTiers || priceTiers.length === 0) return null;
+    const qty = parseInt(quantity) || 100;
+    
+    // 找到匹配的价格档位
+    let bestTier = priceTiers[0];
+    for (const tier of priceTiers) {
+      if (qty >= tier.quantity) {
+        bestTier = tier;
+      }
+    }
+    return bestTier;
+  };
+
+  // 智能推荐
+  const getRecommendation = () => {
+    if (products.length === 0) return null;
+    
+    // 找到价格最低且库存充足的商品
+    const available = products.filter(p => p.stock > 0);
+    if (available.length === 0) return null;
+    
+    const best = available.reduce((min, p) => {
+      const minPrice = getBestPrice(min.priceTiers)?.price || Infinity;
+      const pPrice = getBestPrice(p.priceTiers)?.price || Infinity;
+      return pPrice < minPrice ? p : min;
+    });
+    
+    const bestPrice = getBestPrice(best.priceTiers);
+    if (!bestPrice) return null;
+    
+    return {
+      platform: best.platformName,
+      price: bestPrice.price,
+      quantity: bestPrice.quantity,
+      stock: best.stock,
+    };
+  };
+
+  const recommendation = getRecommendation();
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -126,6 +134,7 @@ const App: React.FC = () => {
                 placeholder="请输入元器件型号，如：STM32F103C8T6"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
+                onKeyPress={handleKeyPress}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-l focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
               />
             </div>
@@ -138,8 +147,13 @@ const App: React.FC = () => {
                 className="w-20 px-2 py-0.5 border border-gray-200 rounded text-center focus:outline-none focus:ring-1 focus:ring-red-500"
               />
             </div>
-            <button className="px-8 py-2.5 bg-red-600 text-white rounded hover:bg-red-700 font-medium shadow-sm transition-colors">
-              搜索
+            <button
+              onClick={handleSearch}
+              disabled={loading}
+              className="px-8 py-2.5 bg-red-600 text-white rounded hover:bg-red-700 font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {loading ? '搜索中...' : '搜索'}
             </button>
             <button className="px-4 py-2.5 border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-2 text-gray-700">
               <Upload className="w-4 h-4" />上传BOM
@@ -149,10 +163,29 @@ const App: React.FC = () => {
           {/* 平台选择 */}
           <div className="mt-3 flex items-center gap-6">
             <span className="text-sm text-gray-500">平台:</span>
-            {['立创商城', '在芯间', '云汉芯城', '华秋商城', '硬之城'].map((platform) => (
-              <label key={platform} className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-600 hover:text-red-600">
-                <input type="checkbox" defaultChecked className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                <span>{platform}</span>
+            {[
+              { key: 'lcsc', name: '立创商城' },
+              { key: 'zaixjian', name: '在芯间' },
+              { key: 'yunhan', name: '云汉芯城' },
+              { key: 'huaqiu', name: '华秋商城' },
+              { key: 'yingzhicheng', name: '硬之城' },
+            ].map((platform) => (
+              <label
+                key={platform.key}
+                className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-600 hover:text-red-600"
+              >
+                <input
+                  type="checkbox"
+                  checked={platforms[platform.key as keyof typeof platforms]}
+                  onChange={() =>
+                    setPlatforms({
+                      ...platforms,
+                      [platform.key]: !platforms[platform.key as keyof typeof platforms],
+                    })
+                  }
+                  className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
+                />
+                <span>{platform.name}</span>
               </label>
             ))}
           </div>
@@ -162,119 +195,221 @@ const App: React.FC = () => {
       {/* 结果区域 */}
       <div className="flex-1 px-4 py-4">
         <div className="max-w-7xl mx-auto">
-          {/* 结果统计和排序 */}
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm text-gray-500">
-              共找到 <span className="font-medium text-gray-900">15</span> 条结果
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">排序:</span>
-              <button className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">
-                {sortBy} <ChevronDown className="w-4 h-4" />
-              </button>
-              <button className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">价格</button>
-              <button className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">库存</button>
-              <button className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">匹配度</button>
+          {/* 错误提示 */}
+          {error && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
+              {error}
             </div>
-          </div>
+          )}
+
+          {/* 结果统计和排序 */}
+          {!error && (
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm text-gray-500">
+                {products.length > 0 ? (
+                  <>
+                    共找到 <span className="font-medium text-gray-900">{total}</span> 条结果
+                    <span className="ml-2 text-gray-400">({elapsedMs}ms)</span>
+                  </>
+                ) : (
+                  '输入型号开始搜索'
+                )}
+              </span>
+              {products.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">排序:</span>
+                  <button className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">
+                    {sortBy} <ChevronDown className="w-4 h-4" />
+                  </button>
+                  <button className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">
+                    价格
+                  </button>
+                  <button className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">
+                    库存
+                  </button>
+                  <button className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-700">
+                    匹配度
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 结果列表 */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="w-10 px-3 py-3 text-center">
-                    <input type="checkbox" className="w-4 h-4 rounded border-gray-300" />
-                  </th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">平台</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-600">型号/描述</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-32">参数</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-64">阶梯价格(含税)</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">库存</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">匹配度</th>
-                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {mockProducts.map((product) => (
-                  <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 py-4 text-center">
+          {products.length > 0 && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="w-10 px-3 py-3 text-center">
                       <input type="checkbox" className="w-4 h-4 rounded border-gray-300" />
-                    </td>
-                    <td className="px-3 py-4">
-                      <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
-                        product.platform === '立创商城' ? 'bg-red-50 text-red-600' :
-                        product.platform === '在芯间' ? 'bg-blue-50 text-blue-600' :
-                        'bg-green-50 text-green-600'
-                      }`}>
-                        {product.platform}
-                      </span>
-                    </td>
-                    <td className="px-3 py-4">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400">{product.category}</span>
-                          <span className="text-xs text-gray-300">|</span>
-                          <span className="text-xs text-blue-500 font-mono">{product.partNumber}</span>
-                        </div>
-                        <div className="font-medium text-gray-900">{product.model}</div>
-                        <div className="text-xs text-gray-500">{product.brand} | {product.encapsulation}</div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-4">
-                      <div className="text-xs text-gray-500">{product.params}</div>
-                      <div className="text-xs text-gray-400 mt-1">{product.description}</div>
-                    </td>
-                    <td className="px-3 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        {product.priceTiers.map((tier, idx) => (
-                          <div
-                            key={idx}
-                            className={`px-2 py-1 rounded text-xs ${
-                              tier.isBest
-                                ? 'bg-red-50 border border-red-200 text-red-600 font-medium'
-                                : 'bg-gray-50 text-gray-600'
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">
+                      平台
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600">
+                      型号/描述
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-32">
+                      参数
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-64">
+                      阶梯价格(含税)
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">
+                      库存
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">
+                      匹配度
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">
+                      操作
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {products.map((product) => {
+                    const bestPrice = getBestPrice(product.priceTiers);
+                    const buyQty = parseInt(quantity) || 100;
+
+                    return (
+                      <tr key={product.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-3 py-4 text-center">
+                          <input type="checkbox" className="w-4 h-4 rounded border-gray-300" />
+                        </td>
+                        <td className="px-3 py-4">
+                          <span
+                            className={`inline-block px-2 py-1 text-xs font-medium rounded ${
+                              product.platform === 'lcsc'
+                                ? 'bg-red-50 text-red-600'
+                                : product.platform === 'zaixjian'
+                                  ? 'bg-blue-50 text-blue-600'
+                                  : 'bg-green-50 text-green-600'
                             }`}
                           >
-                            {tier.quantity}+ ¥{tier.price.toFixed(2)}
-                            {tier.isBest && <span className="ml-1">★</span>}
+                            {product.platformName}
+                          </span>
+                        </td>
+                        <td className="px-3 py-4">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-400">{product.category}</span>
+                              <span className="text-xs text-gray-300">|</span>
+                              <span className="text-xs text-blue-500 font-mono">{product.sku}</span>
+                            </div>
+                            <div className="font-medium text-gray-900">{product.model}</div>
+                            <div className="text-xs text-gray-500">
+                              {product.brand} | {product.package || '-'}
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-3 py-4">
-                      <div className="font-medium text-gray-900">{product.stock.toLocaleString()}</div>
-                      <div className="text-xs text-green-600">{product.stockStatus}</div>
-                    </td>
-                    <td className="px-3 py-4">
-                      <div className="flex items-center gap-1">
-                        <span className="font-medium text-gray-900">{product.matchRate}%</span>
-                        <span className="text-yellow-500">★</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-4">
-                      <div className="flex items-center gap-2">
-                        <button className="text-blue-600 hover:text-blue-800 text-sm">详情</button>
-                        <span className="text-gray-300">|</span>
-                        <button className="text-blue-600 hover:text-blue-800 text-sm">链接</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td className="px-3 py-4">
+                          <div className="text-xs text-gray-500">
+                            {product.specifications
+                              ? Object.entries(product.specifications)
+                                  .slice(0, 3)
+                                  .map(([k, v]) => `${k}: ${v}`)
+                                  .join(' | ')
+                              : '-'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            {product.priceTiers.map((tier, idx) => {
+                              const isMatched =
+                                buyQty >= tier.quantity && bestPrice?.quantity === tier.quantity;
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`px-2 py-1 rounded text-xs ${
+                                    isMatched
+                                      ? 'bg-red-50 border border-red-200 text-red-600 font-medium'
+                                      : 'bg-gray-50 text-gray-600'
+                                  }`}
+                                >
+                                  {tier.quantity}+ ¥{tier.price.toFixed(2)}
+                                  {isMatched && <span className="ml-1">★</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4">
+                          <div className="font-medium text-gray-900">
+                            {product.stock.toLocaleString()}
+                          </div>
+                          <div
+                            className={`text-xs ${
+                              product.stockStatus === 'in_stock'
+                                ? 'text-green-600'
+                                : product.stockStatus === 'low_stock'
+                                  ? 'text-orange-600'
+                                  : 'text-red-600'
+                            }`}
+                          >
+                            {product.stockStatus === 'in_stock'
+                              ? '现货'
+                              : product.stockStatus === 'low_stock'
+                                ? '库存紧张'
+                                : '无货'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4">
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium text-gray-900">{product.matchScore}%</span>
+                            <span className="text-yellow-500">★</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-4">
+                          <div className="flex items-center gap-2">
+                            <button className="text-blue-600 hover:text-blue-800 text-sm">
+                              详情
+                            </button>
+                            {product.productUrl && (
+                              <>
+                                <span className="text-gray-300">|</span>
+                                <a
+                                  href={product.productUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 text-sm"
+                                >
+                                  链接
+                                </a>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* 智能推荐 */}
-          <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-orange-50 rounded-lg border border-red-100">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">💡</span>
-              <p className="text-sm text-gray-700">
-                <span className="font-medium text-red-600">智能推荐：</span>
-                在芯间 - 最低价 ¥10.20 (100片起)，库存充足 (3200件)
-              </p>
+          {recommendation && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-orange-50 rounded-lg border border-red-100">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💡</span>
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium text-red-600">智能推荐：</span>
+                  {recommendation.platform} - 最低价 ¥{recommendation.price.toFixed(2)} (
+                  {recommendation.quantity}片起)，库存充足 ({recommendation.stock.toLocaleString()}
+                  件)
+                </p>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* 空状态 */}
+          {!loading && !error && products.length === 0 && (
+            <div className="bg-white rounded-lg shadow p-12 text-center">
+              <div className="text-gray-400 text-lg mb-2">开始搜索元器件</div>
+              <div className="text-gray-400 text-sm">输入型号如 STM32F103C8T6，点击搜索按钮</div>
+            </div>
+          )}
         </div>
       </div>
 

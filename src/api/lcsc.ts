@@ -18,6 +18,7 @@ export interface Product {
   brand: string;
   stock: number;
   prices: PriceTier[];
+  product_url?: string;
 }
 
 /** 搜索结果 */

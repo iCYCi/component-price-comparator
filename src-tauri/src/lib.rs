@@ -26,6 +26,8 @@ pub struct Product {
     pub brand: String,
     pub stock: u32,
     pub prices: Vec<PriceTier>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +61,7 @@ async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>)
                 PriceTier { quantity: 10, price: 11.26 },
                 PriceTier { quantity: 100, price: 10.22 },
             ],
+            product_url: Some(format!("https://item.szlcsc.com/{}.html", "C8735")),
         },
     ];
 

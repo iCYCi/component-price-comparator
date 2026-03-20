@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Search, Upload, History, Star, Settings, Loader2 } from 'lucide-react';
+import { Search, Upload, History, Star, Settings, Loader2, ExternalLink } from 'lucide-react';
 import { searchLcsc, type Product, type PriceTier } from './api/lcsc';
 
 const App: React.FC = () => {
@@ -92,7 +92,7 @@ const App: React.FC = () => {
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyPress={handleKeyPress}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-l focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-l focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-gray-900"
               />
             </div>
             <div className="flex items-center gap-2 border border-gray-300 border-l-0 rounded-r px-3 py-2.5">
@@ -101,7 +101,7 @@ const App: React.FC = () => {
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="w-20 px-2 py-0.5 border border-gray-200 rounded text-center focus:outline-none focus:ring-1 focus:ring-red-500"
+                className="w-20 px-2 py-0.5 border border-gray-200 rounded text-center focus:outline-none focus:ring-1 focus:ring-red-500 text-gray-900"
               />
             </div>
             <button
@@ -156,7 +156,7 @@ const App: React.FC = () => {
                   <tr>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">平台</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-600">型号/品牌</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-48">阶梯价格</th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-64">阶梯价格</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">库存</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">操作</th>
                   </tr>
@@ -183,24 +183,27 @@ const App: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-3 py-4">
-                          <div className="flex flex-wrap gap-2">
-                            {product.prices.map((tier, idx) => {
-                              const isMatched = buyQty >= tier.quantity && bestPrice?.quantity === tier.quantity;
-                              return (
-                                <div
-                                  key={idx}
-                                  className={`px-2 py-1 rounded text-xs ${
-                                    isMatched
-                                      ? 'bg-red-50 border border-red-200 text-red-600 font-medium'
-                                      : 'bg-gray-50 text-gray-600'
-                                  }`}
-                                >
-                                  {tier.quantity}+ ¥{tier.price.toFixed(2)}
-                                  {isMatched && <span className="ml-1">★</span>}
-                                </div>
-                              );
-                            })}
-                          </div>
+                          {/* 阶梯价格表格 - 参考立创样式 */}
+                          <table className="border-collapse text-xs">
+                            <tbody>
+                              {product.prices.map((tier, idx) => {
+                                const isMatched = buyQty >= tier.quantity && bestPrice?.quantity === tier.quantity;
+                                return (
+                                  <tr key={idx}>
+                                    <td className={`px-2 py-0.5 border border-gray-200 ${isMatched ? 'bg-red-50 font-medium' : 'bg-white'}`}>
+                                      {tier.quantity}+
+                                    </td>
+                                    <td className={`px-2 py-0.5 border border-gray-200 ${isMatched ? 'bg-red-50 text-red-600 font-medium' : 'bg-white text-gray-700'}`}>
+                                      ¥{tier.price.toFixed(2)}
+                                    </td>
+                                    {isMatched && (
+                                      <td className="px-1 py-0.5 text-red-500">★</td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </td>
                         <td className="px-3 py-4">
                           <div className="font-medium text-gray-900">{product.stock.toLocaleString()}</div>
@@ -209,6 +212,19 @@ const App: React.FC = () => {
                         <td className="px-3 py-4">
                           <div className="flex items-center gap-2">
                             <button className="text-blue-600 hover:text-blue-800 text-sm">详情</button>
+                            {product.product_url && (
+                              <>
+                                <span className="text-gray-300">|</span>
+                                <a
+                                  href={product.product_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-0.5"
+                                >
+                                  链接 <ExternalLink className="w-3 h-3" />
+                                </a>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

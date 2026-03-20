@@ -1,9 +1,8 @@
 pub mod http;
 pub mod lcsc;
 
-use lcsc::{LcscProduct, PriceTier};
+use lcsc::LcscProduct;
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
 
 /// 前端价格阶梯格式
 #[derive(Debug, Clone, Serialize, Deserialize)]

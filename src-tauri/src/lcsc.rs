@@ -4,7 +4,6 @@
 
 use crate::http::HttpClient;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// 立创商城 API 基础 URL
 const LCSC_API_BASE: &str = "https://wwwapi.lcsc.com";

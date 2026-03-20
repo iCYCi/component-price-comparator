@@ -1,5 +1,3 @@
-pub mod http;
-
 use serde::{Deserialize, Serialize};
 
 /// 搜索结果

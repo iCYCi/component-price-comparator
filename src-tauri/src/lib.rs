@@ -1,5 +1,6 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// 搜索结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,9 +88,11 @@ async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>)
     let page = page.unwrap_or(1);
     let page_size = page_size.unwrap_or(20);
 
-    // 创建 HTTP 客户端
+    // 创建 HTTP 客户端，添加超时设置
     let client = match Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
         .build()
     {
         Ok(c) => c,
@@ -116,23 +119,46 @@ async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>)
     // 发送请求
     let response = match client
         .get(&url)
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
         .header("Referer", "https://www.szlcsc.com/")
         .header("Origin", "https://www.szlcsc.com")
+        .header("Cache-Control", "no-cache")
         .send()
         .await
     {
         Ok(r) => r,
         Err(e) => {
+            let error_msg = if e.is_timeout() {
+                "请求超时，请检查网络连接".to_string()
+            } else if e.is_connect() {
+                "无法连接到立创服务器，请检查网络连接".to_string()
+            } else {
+                format!("网络请求失败: {}", e)
+            };
+            
             return SearchResult {
                 success: false,
                 data: None,
                 error: Some(SearchErrorInfo {
                     code: "REQUEST_ERROR".to_string(),
-                    message: format!("请求失败: {}", e),
+                    message: error_msg,
                 }),
             }
         }
     };
+
+    // 检查 HTTP 状态码
+    if !response.status().is_success() {
+        return SearchResult {
+            success: false,
+            data: None,
+            error: Some(SearchErrorInfo {
+                code: "HTTP_ERROR".to_string(),
+                message: format!("HTTP 错误: {}", response.status()),
+            }),
+        };
+    }
 
     // 解析响应
     let lcsc_response: LcscSearchResponse = match response.json().await {

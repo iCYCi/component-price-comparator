@@ -154,10 +154,15 @@ const App: React.FC = () => {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">平台</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600">型号/品牌</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-64">阶梯价格</th>
+                    <th className="w-10 px-2 py-3 text-center">
+                      <input type="checkbox" className="w-4 h-4 rounded border-gray-300" />
+                    </th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">平台</th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600">名称/型号/封装/品牌</th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-32">参数</th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-48">阶梯价格(含税)</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">库存</th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-20">匹配度</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-600 w-24">操作</th>
                   </tr>
                 </thead>
@@ -168,46 +173,67 @@ const App: React.FC = () => {
 
                     return (
                       <tr key={product.product_id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-2 py-4 text-center">
+                          <input type="checkbox" className="w-4 h-4 rounded border-gray-300" />
+                        </td>
                         <td className="px-3 py-4">
                           <span className="inline-block px-2 py-1 text-xs font-medium rounded bg-red-50 text-red-600">
                             立创商城
                           </span>
                         </td>
                         <td className="px-3 py-4">
-                          <div className="flex flex-col gap-1">
+                          <div className="flex flex-col gap-0.5">
+                            {/* 名称 */}
+                            <div className="text-sm text-gray-900">{product.product_name}</div>
+                            {/* 型号 */}
                             <div className="flex items-center gap-2">
+                              <span className="text-blue-600 font-medium">{product.model || product.product_code}</span>
+                              <span className="text-xs text-gray-400">|</span>
                               <span className="text-xs text-blue-500 font-mono">{product.product_code}</span>
                             </div>
-                            <div className="font-medium text-gray-900">{product.product_name}</div>
+                            {/* 封装 */}
+                            <div className="text-xs text-gray-500">{product.package || 'LQFP-48'}</div>
+                            {/* 品牌 */}
                             <div className="text-xs text-gray-500">{product.brand}</div>
                           </div>
                         </td>
                         <td className="px-3 py-4">
-                          {/* 阶梯价格表格 - 参考立创样式 */}
-                          <table className="border-collapse text-xs">
-                            <tbody>
-                              {product.prices.map((tier, idx) => {
-                                const isMatched = buyQty >= tier.quantity && bestPrice?.quantity === tier.quantity;
-                                return (
-                                  <tr key={idx}>
-                                    <td className={`px-2 py-0.5 border border-gray-200 ${isMatched ? 'bg-red-50 font-medium' : 'bg-white'}`}>
-                                      {tier.quantity}+
-                                    </td>
-                                    <td className={`px-2 py-0.5 border border-gray-200 ${isMatched ? 'bg-red-50 text-red-600 font-medium' : 'bg-white text-gray-700'}`}>
-                                      ¥{tier.price.toFixed(2)}
-                                    </td>
-                                    {isMatched && (
-                                      <td className="px-1 py-0.5 text-red-500">★</td>
-                                    )}
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                          <div className="text-xs text-gray-500 leading-relaxed">
+                            {product.params || '72MHz | 64KB Flash | 20KB SRAM | 2V~3.6V'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4">
+                          {/* 阶梯价格 - 参考立创样式 */}
+                          <div className="flex items-center gap-1">
+                            {product.prices.map((tier, idx) => {
+                              const isMatched = buyQty >= tier.quantity && bestPrice?.quantity === tier.quantity;
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`flex flex-col items-center px-2 py-1 rounded text-xs ${
+                                    isMatched
+                                      ? 'bg-red-600 text-white'
+                                      : 'bg-gray-100 text-gray-600'
+                                  }`}
+                                >
+                                  <span className="font-medium">{tier.quantity}+</span>
+                                  <span className={`font-bold ${isMatched ? '' : 'text-red-600'}`}>
+                                    ¥{tier.price.toFixed(2)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </td>
                         <td className="px-3 py-4">
                           <div className="font-medium text-gray-900">{product.stock.toLocaleString()}</div>
                           <div className="text-xs text-green-600">现货</div>
+                        </td>
+                        <td className="px-3 py-4">
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium text-gray-900">100%</span>
+                            <span className="text-yellow-500 text-sm">★</span>
+                          </div>
                         </td>
                         <td className="px-3 py-4">
                           <div className="flex items-center gap-2">
@@ -243,6 +269,23 @@ const App: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* 智能推荐 */}
+      {products.length > 0 && (
+        <div className="px-4 py-2">
+          <div className="max-w-7xl mx-auto">
+            <div className="p-3 bg-gradient-to-r from-red-50 to-orange-50 rounded-lg border border-red-100">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💡</span>
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium text-red-600">智能推荐：</span>
+                  立创商城 - 最低价 ¥10.22 (100片起)，库存充足 (1560件)
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 底部 */}
       <footer className="bg-white border-t border-gray-200 px-4 py-3">

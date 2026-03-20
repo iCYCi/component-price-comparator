@@ -15,7 +15,10 @@ export interface Product {
   product_id: string;
   product_code: string;
   product_name: string;
+  model: string;
   brand: string;
+  package: string;
+  params: string;
   stock: number;
   prices: PriceTier[];
   product_url?: string;

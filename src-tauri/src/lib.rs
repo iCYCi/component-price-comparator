@@ -1,6 +1,10 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use std::time::Duration;
+
+// 全局 Cookie 存储
+static LCSC_COOKIES: Mutex<Option<String>> = Mutex::new(None);
 
 /// 搜索结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +51,14 @@ pub struct SearchErrorInfo {
     pub message: String,
 }
 
+/// 平台登录状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginStatus {
+    pub platform: String,
+    pub logged_in: bool,
+    pub username: Option<String>,
+}
+
 // ========== 立创 API 响应结构 ==========
 
 #[derive(Debug, Deserialize)]
@@ -82,13 +94,69 @@ struct LcscPrice {
     price: String,
 }
 
-/// Tauri 命令：搜索立创商城（真实 API）
+/// Tauri 命令：设置立创 Cookie
+#[tauri::command]
+async fn set_lcsc_cookie(cookie: String) -> SearchResult {
+    let mut stored = LCSC_COOKIES.lock().unwrap();
+    *stored = Some(cookie);
+    
+    SearchResult {
+        success: true,
+        data: None,
+        error: None,
+    }
+}
+
+/// Tauri 命令：获取登录状态
+#[tauri::command]
+async fn get_login_status() -> LoginStatus {
+    let stored = LCSC_COOKIES.lock().unwrap();
+    let logged_in = stored.is_some();
+    
+    LoginStatus {
+        platform: "lcsc".to_string(),
+        logged_in,
+        username: if logged_in { Some("已登录".to_string()) } else { None },
+    }
+}
+
+/// Tauri 命令：登出
+#[tauri::command]
+async fn logout_lcsc() -> SearchResult {
+    let mut stored = LCSC_COOKIES.lock().unwrap();
+    *stored = None;
+    
+    SearchResult {
+        success: true,
+        data: None,
+        error: None,
+    }
+}
+
+/// Tauri 命令：搜索立创商城
 #[tauri::command]
 async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>) -> SearchResult {
     let page = page.unwrap_or(1);
     let page_size = page_size.unwrap_or(20);
 
-    // 创建 HTTP 客户端，添加超时设置
+    // 检查是否已登录
+    let cookie = {
+        let stored = LCSC_COOKIES.lock().unwrap();
+        stored.clone()
+    };
+
+    if cookie.is_none() {
+        return SearchResult {
+            success: false,
+            data: None,
+            error: Some(SearchErrorInfo {
+                code: "NOT_LOGGED_IN".to_string(),
+                message: "请先登录立创商城".to_string(),
+            }),
+        };
+    }
+
+    // 创建 HTTP 客户端
     let client = match Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .timeout(Duration::from_secs(30))
@@ -116,13 +184,14 @@ async fn search_lcsc(keyword: String, page: Option<u32>, page_size: Option<u32>)
         page_size
     );
 
-    // 发送请求
+    // 发送请求（带 Cookie）
     let response = match client
         .get(&url)
         .header("Accept", "application/json, text/plain, */*")
         .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
         .header("Referer", "https://www.szlcsc.com/")
         .header("Origin", "https://www.szlcsc.com")
+        .header("Cookie", cookie.unwrap_or_default())
         .header("Cache-Control", "no-cache")
         .send()
         .await
@@ -258,7 +327,12 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![search_lcsc])
+        .invoke_handler(tauri::generate_handler![
+            search_lcsc,
+            set_lcsc_cookie,
+            get_login_status,
+            logout_lcsc
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
